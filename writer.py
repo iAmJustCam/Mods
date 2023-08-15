@@ -1,4 +1,3 @@
-#writerer.py module
 # coding: utf-8
 import csv
 import json
@@ -16,94 +15,73 @@ class DataWriterError(Exception):
     """Custom exception for DataWriter errors."""
 
 
-class Writer(ABC):
+class Formatter(ABC):
     @abstractmethod
-    async def write_data(self, file: IO, data: List[Dict[str, Any]], mode: str = "w") -> None:
-        """Abstract method to write data."""
+    def format_data(self, data: List[Dict[str, Any]]) -> Any:
+        """Abstract method to format data."""
 
 
-class DataWriter:
-    def __init__(self, writer: Writer):
-        self.writer = writer
-
-    @staticmethod
-    def create_writer(filename: str, **kwargs) -> "DataWriter":
-        """Factory method to create appropriate writer based on file extension."""
-        ext = filename.split(".")[-1]
-        writers = {
-            "csv": CSVDataWriter,
-            "json": JSONDataWriter,
-            "xlsx": ExcelDataWriter,
-        }
-        
-        # Check if the required libraries are installed
-        if ext == 'xlsx' and not openpyxl:
-            raise DataWriterError("openpyxl library not found. Please install it.")
-        
-        return DataWriter(writers.get(ext, JSONDataWriter)(**kwargs))
-
-    async def write_data(self, file: IO, data: List[Dict[str, Any]], mode: str = "w") -> None:
-        """Write data to file using the selected writer."""
-        if not os.access(file.name, os.W_OK):
-            logging.error(f"Permission denied to write to {file.name}")
-            raise DataWriterError(f"Permission denied to write to {file.name}")
-
-        self._validate_data(data)
-        await self.writer.write_data(file, data, mode)
-        logging.info(f"Data written to {file.name}")
-
-    def _validate_data(self, data: List[Dict[str, Any]]) -> None:
-        """Validate data for empty content and inconsistent headers."""
-        if not data or any(list(item.keys()) != list(data[0].keys()) for item in data):
-            logging.error("Invalid data.")
-            raise DataWriterError("Invalid data.")
+class CSVFormatter(Formatter):
+    def format_data(self, data: List[Dict[str, Any]]) -> str:
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=data[0].keys())
+        writer.writeheader()
+        writer.writerows(data)
+        return output.getvalue()
 
 
-class CSVDataWriter(Writer):
-    """CSV writer class."""
-    def __init__(self, dialect: Optional[str] = None, compression: Optional[str] = None):
-        self.dialect = dialect
-        self.compression = compression
-
-    async def write_data(self, file: IO, data: List[Dict[str, Any]], mode: str = "w") -> None:
-        """Write data to CSV file."""
-        async with aiofiles.open(file.name, mode=mode) as f:
-            writer = csv.DictWriter(f, fieldnames=data[0].keys(), dialect=self.dialect)
-            writer.writeheader()
-            writer.writerows(data)
+class JSONFormatter(Formatter):
+    def format_data(self, data: List[Dict[str, Any]]) -> str:
+        return json.dumps(data, indent=4)
 
 
-class JSONDataWriter(Writer):
-    """JSON writer class."""
-    def __init__(self, indent: Optional[int] = None):
-        self.indent = indent
-
-    async def write_data(self, file: IO, data: List[Dict[str, Any]], mode: str = "w") -> None:
-        """Write data to JSON file."""
-        async with aiofiles.open(file.name, mode=mode) as f:
-            await f.write(json.dumps(data, indent=self.indent))
-
-
-class ExcelDataWriter(Writer):
-    """Excel writer class."""
-    async def write_data(self, file: IO, data: List[Dict[str, Any]], mode: str = "w") -> None:
-        """Write data to Excel file."""
+class ExcelFormatter(Formatter):
+    def format_data(self, data: List[Dict[str, Any]]) -> openpyxl.Workbook:
         workbook = openpyxl.Workbook()
         sheet = workbook.active
         headers = list(data[0].keys())
         sheet.append(headers)
         for row in data:
             sheet.append([row[header] for header in headers])
-        workbook.save(file.name)
+        return workbook
+
+
+class Writer(ABC):
+    @abstractmethod
+    async def write_data(self, file: IO, formatted_data: Any, mode: str = "w") -> None:
+        """Abstract method to write data."""
+
+
+class FileWriter(Writer):
+    async def write_data(self, file: IO, formatted_data: Any, mode: str = "w") -> None:
+        async with aiofiles.open(file.name, mode=mode) as f:
+            await f.write(formatted_data)
+
+
+class ExcelFileWriter(Writer):
+    async def write_data(self, file: IO, formatted_data: openpyxl.Workbook, mode: str = "w") -> None:
+        formatted_data.save(file.name)
+
+
+class DataWriter:
+    def __init__(self, formatter: Formatter, writer: Writer):
+        self.formatter = formatter
+        self.writer = writer
+
+    async def write_data(self, file: IO, data: List[Dict[str, Any]], mode: str = "w") -> None:
+        formatted_data = self.formatter.format_data(data)
+        await self.writer.write_data(file, formatted_data, mode)
 
 
 # Example usage
 import asyncio
 
 async def main():
-    writer = DataWriter.create_writer("data.json", indent=4)
+    formatter = JSONFormatter()
+    writer = FileWriter()
+    data_writer = DataWriter(formatter, writer)
     with open("data.json", "w") as file:
-        await writer.write_data(file, [{"name": "John", "age": 30}])
+        await data_writer.write_data(file, [{"name": "John", "age": 30}])
 
 
 # Uncomment the following line to run the example

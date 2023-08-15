@@ -1,4 +1,4 @@
-#cacher.py module
+# cacher.py module
 # coding: utf-8
 from collections import OrderedDict, Counter
 import hashlib
@@ -9,7 +9,6 @@ from typing import Any, Callable, Dict, Generic, Optional, TypeVar
 
 K = TypeVar("K")  # Key type
 V = TypeVar("V")  # Value type
-
 
 class CacheBackend(Generic[K, V]):
     """Backend that manages the cache data storage using an OrderedDict."""
@@ -51,7 +50,6 @@ class CacheBackend(Generic[K, V]):
         instance = cls(capacity=capacity)
         instance.cache = cache_with_timestamps
         return instance
-
 
 class Cache(Generic[K, V]):
     """Interface for caching mechanism with TTL and stats."""
@@ -120,3 +118,9 @@ class Cache(Generic[K, V]):
             return result
 
         return async_wrapper
+
+if __name__ == "__main__":
+    # Sample usage to demonstrate the new structure.
+    backend = CacheBackend(capacity=3)
+    cache = Cache(backend=backend, ttl=300)
+    # Further usage logic here

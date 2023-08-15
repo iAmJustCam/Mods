@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any
 from urllib.parse import quote_plus
 
 from pydantic import BaseModel, validator, ValidationError
+from enum import Enum
 
 from logger import setup_logging
 
@@ -70,19 +71,14 @@ class Matchup(BaseModel):
             raise ValueError("Invalid date format")
 
 
-class ConfigurationManager:
-    """Manages configuration and related utilities."""
+class ConfigParser:
+    """Handles parsing of the configuration file."""
 
-    def __init__(self, config_file: Optional[str] = None) -> None:
+    def __init__(self, config_file: Optional[str] = None):
         self._config_file_path: Optional[Path] = (
             Path(config_file) if config_file else None
         )
         self._config: configparser.ConfigParser = self._load_config()
-        self._validate_and_load_to_singleton()
-
-    @property
-    def config(self) -> configparser.ConfigParser:
-        return self._config
 
     def _load_config(self) -> configparser.ConfigParser:
         """Load the config from file."""
@@ -95,25 +91,41 @@ class ConfigurationManager:
         config.read(self._config_file_path)
         return config
 
-    def _validate_and_load_to_singleton(self) -> None:
-        """Validates and loads the necessary fields in the config to the singleton."""
+    def get_config(self):
+        return self._config
+
+
+class ConfigValidator:
+    """Handles validation of the configuration data."""
+
+    @staticmethod
+    def validate(config: configparser.ConfigParser):
         try:
             # Using sections directly for flexibility and future enhancements
             config_data = {
-                "DATE_FORMAT": self._config.get("Config", "DATE_FORMAT"),
-                "MAX_CONCURRENT_REQUESTS": self._config.getint("Config", "MAX_CONCURRENT_REQUESTS"),
-                "TEAM_BASE_URL": self._config.get("Config", "TEAM_BASE_URL")
+                "DATE_FORMAT": config.get("Config", "DATE_FORMAT"),
+                "MAX_CONCURRENT_REQUESTS": config.getint("Config", "MAX_CONCURRENT_REQUESTS"),
+                "TEAM_BASE_URL": config.get("Config", "TEAM_BASE_URL")
             }
             Config.load_config_data(config_data)
 
             # Dynamically create TeamName Enum based on config.ini
-            team_mapping = self._config["team_name_mapping"]
+            team_mapping = config["team_name_mapping"]
             for team, _ in team_mapping.items():
                 TeamName[team.upper().replace(" ", "_")] = team
         except Exception as e:
-            logging.error(f"Validation or Loading Error: {e}")
+            logging.error(f"Validation Error: {e}")
             Metrics.errors += 1
             raise
+
+
+class ConfigurationManager:
+    """Manages configuration and related utilities."""
+
+    def __init__(self, config_file: Optional[str] = None) -> None:
+        self.parser = ConfigParser(config_file)
+        self.validator = ConfigValidator
+        self.validator.validate(self.parser.get_config())
 
     def get_team_url(self, team_name: TeamName) -> str:
         """Generate a URL for the given team name."""
@@ -121,6 +133,11 @@ class ConfigurationManager:
         url = f"{Config().TEAM_BASE_URL}{encoded_name}"
         logging.info(f"Generated URL for {team_name}: {url}")
         return url
+
+    def reload_config(self):
+        """Reload the configuration without restarting the application."""
+        self.parser = ConfigParser(self.parser._config_file_path)
+        self.validator.validate(self.parser.get_config())
 
 
 # This is for demonstrating how to use the ConfigurationManager

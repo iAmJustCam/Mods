@@ -1,4 +1,4 @@
-#prompter.py module
+# prompter.py module
 # coding: utf-8
 import logging
 import matplotlib.pyplot as plt
@@ -7,6 +7,15 @@ import os
 import asyncio
 from evaluator import MatchupManager, ScheduleScraperStrategy, DateFormatError, Backtester
 
+class BacktestManager:
+    def __init__(self, scraper: ScheduleScraperStrategy):
+        self.backtester = Backtester(7, scraper)
+
+    def run_backtesting(self):
+        loop = asyncio.get_event_loop()
+        results = loop.run_until_complete(self.backtester.execute_backtest())
+        return results
+
 class Prompter:
     def __init__(self, scraper: ScheduleScraperStrategy, interactive_mode=False, config_file="prompter_config.json"):
         self.backtest_period = 7
@@ -14,7 +23,8 @@ class Prompter:
         self.config_file = config_file
         self.load_config()
         self.logger = logging.getLogger(__name__)
-        self.backtester = Backtester(self.backtest_period, scraper)
+        self.backtest_manager = BacktestManager(scraper)
+
 
     def load_config(self):
         if os.path.exists(self.config_file):
@@ -117,7 +127,15 @@ class Prompter:
         while True:
             self.prompt_backtest_period()
             if self.prompt_for_confirmation("Do you want to start the backtesting process?"):
-                self.run_backtesting()
+                results = self.backtest_manager.run_backtesting()
+                win_rate = results.get("win_rate", 0)
+                metrics = {
+                    "accuracy": results.get("accuracy", 0),
+                    "precision": results.get("precision", 0)
+                }
+                self.display_win_rate(win_rate)
+                self.prompt_view_metrics(metrics)
+                self.plot_metrics(metrics)
             self.save_config()
             if not self.interactive_mode or not self.prompt_for_confirmation("Do you want to re-run?"):
                 break

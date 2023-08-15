@@ -1,143 +1,85 @@
-# coding: utf-8
-# main.py
-import asyncio
-from argparse import ArgumentParser
-from datetime import datetime, timedelta
-from time import time
+import config
+import Prompter
+import fetcher
+import extractor
+import cacher
+import analyzer
+import Trainer
+import Evaluator
+import writer
+import logger
 
-from trainer import MachineLearning
-from prompter import Prompter, ScheduleScraperStrategy
-from logger import get_logger, setup_logging
-from constants import CONSTANTS
-from fetcher import ScheduleFetcher, StatsFetcher, ResultsFetcher
-from cacher import Cache, CacheBackend
-from config import ConfigurationManager
+def main():
+    # Setup logging
+    logger.setup_logging()
+    log = logger.get_logger(__name__)
 
-# Argument Parsing
-parser = ArgumentParser(description="Execution Module for the System")
-parser.add_argument(
-    "--backtest-period", type=int, default=7, help="Backtest period in days"
-)
-parser.add_argument(
-    "--config-file",
-    type=str,
-    default="config.ini",
-    help="Path to the configuration file",
-)
-parser.add_argument(
-    "--log-file", type=str, default="log.txt", help="Path to the log file"
-)
-args = parser.parse_args()
+    # Setup cache
+    backend = cacher.CacheBackend(capacity=100)
+    cache = cacher.Cache(backend=backend, ttl=300)
 
-# Setup Logging and Configuration
-setup_logging(log_file_name=args.log_file)
-logger = get_logger(__name__)
-config_manager = ConfigurationManager(config_file=args.config_file)
+    # Setup prompter
+    scraper_instance = fetcher.MlbScheduleScraper()
+    prompter = Prompter.Prompter(scraper_instance)
+    
+    # Setup machine learning instance
+    ml_instance = Trainer.MachineLearning()
+    
+    # Setup fetcher
+    fetcher_instance = fetcher.Fetcher(fetcher.FetcherConfig(), "https://example.com/data")
+    
+    # Setup configuration manager
+    config_manager = config.ConfigurationManager("config.ini")
+    
+    # Setup extractor
+    fetcher_config = fetcher.FetcherConfig(...)
+    async_fetcher = fetcher.AsyncFetcher(fetcher_config)
+    cache_instance = aiocache.SimpleMemoryCache(max_size=100, ttl=3600)
+    team_ranking_extractor = extractor.TeamRankingExtractor(async_fetcher, cache_instance)
 
-# Cache Setup
-cache_backend = CacheBackend(capacity=CONSTANTS.CACHE_SIZE)
-cache = Cache(backend=cache_backend)
+    try:
+        # 1. Load configurations
+        configurations = config.load_config()
 
-# Prompter Setup
-scraper_instance = (
-    ScheduleScraperStrategy()
-)  # Assuming this is initialized without arguments
-prompter = Prompter(scraper_instance, interactive_mode=True)
-prompter.run()  # This will prompt the user for various configurations
+        # 2. Prompt the user for input and configurations
+        backtest_period = prompter.run() or 7
 
-# Setup Logging and Configuration
-setup_logging(log_file_name=args.log_file)
-logger = get_logger(__name__)
-config_manager = ConfigurationManager(config_file=args.config_file)
+        # 3. Fetch and extract data
+        end_date = datetime.today() - timedelta(days=1)
+        start_date = end_date - timedelta(days=backtest_period - 1)
+        date_values = [
+            (start_date + timedelta(days=i)).strftime(config.Config().DATE_FORMAT)
+            for i in range((end_date - start_date).days + 1)
+        ]
 
-# Cache Setup
-cache_backend = CacheBackend(capacity=CONSTANTS.CACHE_SIZE)
-cache = Cache(backend=cache_backend)
+        for date in date_values:
+            data = asyncio.run(fetcher_instance.fetch(f"https://example.com/data/{date}", {}))
+            extracted_data = extractor.extract_data(data)
+            asyncio.run(cache.put(f"extracted_data_{date}", extracted_data))
 
-# Retry Decorator
-def retry(attempts=3, delay=5):
-    def decorator(func):
-        async def wrapper(*args, **kwargs):
-            for attempt in range(attempts):
-                try:
-                    return await func(*args, **kwargs)
-                except Exception as e:
-                    error_msg = (
-                        f"Error in {func.__name__}: {e}. "
-                        f"Retrying in {delay} seconds..."
-                    )
-                    logger.error(error_msg)
-                    await asyncio.sleep(delay)
-            logger.error(
-                f"Failed to execute {func.__name__} after {attempts} attempts."
-            )
+        # 4. Analyze the data
+        validated_matches = analyzer.TeamMatchValidator.validate(extracted_data)
+        for match in validated_matches:
+            points = analyzer.PointsCalculator.award_points(match)
+            winner = analyzer.WinnerDeterminer.determine_winner(points)
 
-        return wrapper
+        # 5. Train any models if needed
+        ml_instance.load_training_data(validated_matches)
+        ml_instance.evaluate_models()
 
-    return decorator
+        # 6. Evaluate the results
+        evaluation_results = Evaluator.evaluate_model(ml_instance.model)
 
+        # 7. Write the results or any output
+        formatter = writer.JSONFormatter()
+        file_writer = writer.FileWriter()
+        data_writer = writer.DataWriter(formatter, file_writer)
+        with open("output.json", "w") as file:
+            asyncio.run(data_writer.write_data(file, evaluation_results))
 
-# Main Execution Function
-async def main():
-    backtest_period = prompter.backtest_period
-    start_date = datetime.now() - timedelta(days=backtest_period)
-    schedule_fetcher = ScheduleFetcher(config_manager, cache)
-    stats_fetcher = StatsFetcher(config_manager, cache)
-    results_fetcher = ResultsFetcher(config_manager, cache)
-    ml_model = MachineLearning()
-
-    for day in range(backtest_period):
-        date = start_date + timedelta(days=day)
-        start_time = time()
-        matchups = await schedule_fetcher.get_matchups(date)
-        latency = time() - start_time
-        logger.info(f"Fetched matchups for {date} in {latency} seconds.")
-
-        if not matchups:
-            logger.info(f"No games found for {date}. Skipping...")
-            continue
-
-        # Fetch stats and process matchups concurrently
-        tasks = [process_matchup(matchup, stats_fetcher, date) for matchup in matchups]
-        matchups_data = await asyncio.gather(*tasks)
-
-        results = await results_fetcher.get_results(date)
-        projected_winners = [data["projected_winner"] for data in matchups_data]
-
-        features, labels = ml_model.load_training_data(projected_winners, results)
-        features = ml_model.preprocess_data(features)
-        ml_model.evaluate_models(features, labels)
-        ml_model.tune_hyperparams(features, labels)
-        ml_model.train_model(features, labels)
-        accuracy = ml_model.evaluate_model(features, labels)
-
-        logger.info(f"Model accuracy for {date}: {accuracy}")
-
-    logger.info("Backtesting and training completed.")
-
-
-@retry()
-async def process_matchup(matchup, stats_fetcher, date):
-    home_team = matchup["home"]  # Assuming 'home' and 'away' are keys in matchup dict
-    away_team = matchup["away"]
-
-    # Fetch stats concurrently for efficiency
-    home_stats, away_stats = await asyncio.gather(
-        stats_fetcher.get_team_stats(home_team, date),
-        stats_fetcher.get_team_stats(away_team, date),
-    )
-
-    points = stats_fetcher.compare_stats(home_stats, away_stats)
-    projected_winner = home_team if points["home"] > points["away"] else away_team
-
-    return {
-        "matchup": matchup,
-        "home_stats": home_stats,
-        "away_stats": away_stats,
-        "points": points,
-        "projected_winner": projected_winner,
-    }
-
+    except Exception as e:
+        # 8. Log any important information or errors
+        log.error(f"An error occurred: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

@@ -1,4 +1,3 @@
-#extractor.py module
 # coding: utf-8
 from bs4 import BeautifulSoup
 import logging
@@ -27,15 +26,13 @@ class FetchingError(Exception):
 Matchup = NamedTuple("Matchup", [("home", str), ("away", str), ("date", str)])
 
 
-class Parser:
-    """Utility class to parse HTML content."""
+class DataTransformer:
+    """Utility class to transform fetched data."""
 
     @staticmethod
-    def parse(
-        html_content: str, categories: List[str], parsing_func: Callable
-    ) -> Dict[str, Any]:
+    def transform(html_content: str, categories: List[str], parsing_func: Callable) -> Dict[str, Any]:
         if not html_content or not categories:
-            raise ParsingError("Invalid input for parsing")
+            raise ParsingError("Invalid input for transformation")
         return parsing_func(html_content, categories)
 
 
@@ -43,9 +40,9 @@ class TeamRankingExtractor:
     def __init__(self, fetcher: AsyncFetcher, cache: aiocache.SimpleMemoryCache):
         self.fetcher = fetcher
         self.cache = cache
-        self.parser = Parser()
+        self.transformer = DataTransformer()
 
-    async def fetch_and_extract(
+    async def fetch_and_transform(
         self,
         url: str,
         params: Dict[str, Any],
@@ -61,9 +58,9 @@ class TeamRankingExtractor:
         if cached_data:
             return cached_data
 
-        extracted_data = self.parser.parse(html_content, categories, parsing_func)
-        await self.cache.set(cache_key, extracted_data, ttl=CACHE_EXPIRATION)
-        return extracted_data
+        transformed_data = self.transformer.transform(html_content, categories, parsing_func)
+        await self.cache.set(cache_key, transformed_data, ttl=CACHE_EXPIRATION)
+        return transformed_data
 
     async def _fetch_content(self, url: str, params: Dict[str, Any]) -> str:
         try:
@@ -94,7 +91,7 @@ if __name__ == "__main__":
     cache = aiocache.SimpleMemoryCache(max_size=100, ttl=CACHE_EXPIRATION)
     extractor = TeamRankingExtractor(fetcher, cache)
     asyncio.run(
-        extractor.fetch_and_extract(
+        extractor.fetch_and_transform(
             "https://someurl.com",
             params={"some": "param"},
             categories=["Football", "Cricket"],

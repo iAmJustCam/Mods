@@ -1,4 +1,3 @@
-#fetcher.py module
 # coding: utf-8
 # Standard Library Imports
 import logging

@@ -1,10 +1,9 @@
-#analyzer.py module
+# analyzer.py module
 # coding: utf-8
 from dataclasses import dataclass
 from typing import List, Union, Dict
 from datetime import datetime, timezone
 import logging
-
 
 # Configure logging
 logging.basicConfig(
@@ -12,7 +11,6 @@ logging.basicConfig(
 )
 
 RankDict = Dict[str, int]
-
 
 @dataclass
 class TeamMatch:
@@ -22,18 +20,14 @@ class TeamMatch:
     team1_score: int
     team2_score: int
 
-
 class InvalidScoreError(Exception):
     """Exception raised when team scores are negative or unrealistic."""
-
 
 class DataValidationError(Exception):
     """Exception raised for data validation errors."""
 
-
 class FutureDateError(DataValidationError):
     """Exception raised when match date is in the future."""
-
 
 class TeamMatchValidator:
     """Class responsible for validating team match data."""
@@ -72,7 +66,6 @@ class TeamMatchValidator:
         if not team1.strip() or not team2.strip():
             raise DataValidationError("Team names cannot be empty.")
 
-
 class PointsCalculator:
     """Calculate points based on match results."""
 
@@ -87,7 +80,6 @@ class PointsCalculator:
             logging.info(log_msg)
             return {match.team1: 1, match.team2: 1}
 
-
 class WinnerDeterminer:
     """Determine match winner based on awarded points."""
 
@@ -97,7 +89,6 @@ class WinnerDeterminer:
         if list(points.values()).count(score) > 1:  # Handle ties
             return "It's a Tie!"
         return team
-
 
 if __name__ == "__main__":
     # Sample usage to demonstrate the new structure.

@@ -1,99 +1,80 @@
+
+#main.py module
+#Handling CLI arguments and initialization
+#Configuring application context
+#Constructing core components
+#Starting orchestration and lifecycle
 import argparse
 import asyncio
-from datetime import datetime, timedelta
-import multiprocessing
-
-import config
-from config import MainConfig, ConfigurationManager
-import Prompter
-import fetcher
-import extractor
-import cacher
-import analyzer
-import Trainer
-import Evaluator
-import writer
-import logger
+import logging
+from config import AppConfig
+from logger import setup_logging, get_logger
+from dependency_container import DependencyContainer
+from workflow_orchestrator import WorkflowOrchestrator
+from api import APIEndpoints
 
 # Setup logging
-logger.setup_logging()
-log = logger.get_logger(__name__)
+setup_logging()
+logger = get_logger(__name__)
 
-# Argument parsing for enhanced user interaction
-parser = argparse.ArgumentParser(description="Run the main application with optional configurations.")
-parser.add_argument("--backtest-period", type=int, help="Number of days for backtesting.")
-args = parser.parse_args()
+def setup_cli_arguments():
+    parser = argparse.ArgumentParser(description="Main application for data processing and analysis.")
+    parser.add_argument("--config", type=str, default="config.yaml", help="Path to the configuration file.")
+    parser.add_argument('-m', '--mode', choices=['backtest', 'project'], default='backtest', help="Choose mode: Backtest or Project.")
+    parser.add_argument('-p', '--period', type=int, default=7, help="Specify the period for backtesting or projection.")
+    return parser.parse_args()
 
-# Load configuration
-config_manager = ConfigurationManager(MainConfig.CONFIG_FILE_PATH)
+def validate_args(args):
+    # This function can be expanded for more complex validations
+    if args.period <= 0:
+        logger.error("Period value must be greater than 0.")
+        raise ValueError("Invalid period value.")
 
-# Setup cache
-backend = cacher.AsyncCacheBackend(capacity=MainConfig.CACHE_CAPACITY, ttl=MainConfig.CACHE_TTL)
-cache = cacher.Cache(backend=backend)
+def initialize_config(config_path):
+    return AppConfig(config_path)
 
-# Setup fetcher
-scraper_instance = fetcher.MlbScheduleScraper(MainConfig.SCRAPER_URL)
-fetcher_instance = fetcher.Fetcher(MainConfig.FETCHER, MainConfig.FETCHER.url)
+def initialize_dependency_container(config):
+    return DependencyContainer(config)
 
-# Setup prompter
-backtest_manager = Prompter.BacktestManager(scraper_instance)
-prompter = Prompter.Prompter(backtest_manager)
+def handle_uncaught_exceptions():
+    logger.error("An unhandled exception occurred.", exc_info=True)
 
-# Setup machine learning instance
-ml_instance = Trainer.MachineLearning(MainConfig.TRAINING_DATA_PATH)
-
-# Setup extractor
-async_fetcher = fetcher.AsyncFetcher(MainConfig.FETCHER)
-cache_instance = cacher.AsyncCacheBackend(capacity=MainConfig.CACHE_CAPACITY)
-team_ranking_extractor = extractor.TeamRankingExtractor(async_fetcher, cache_instance)
-
-# Setup evaluator
-evaluator_instance = Evaluator.Backtester(args.backtest_period if args.backtest_period else prompter.backtest_period, scraper_instance)
-
-async def main():
+def main():
     try:
-        # 2. Prompt the user for input and configurations
-        await prompter.run()
+        # Parse command line arguments and flags
+        args = setup_cli_arguments()
 
-        # 3. Fetch and extract data
-        end_date = datetime.today() - timedelta(days=1)
-        start_date = end_date - timedelta(days=prompter.backtest_period - 1)
-        date_values = [
-            (start_date + timedelta(days=i)).strftime(config.Config().DATE_FORMAT)
-            for i in range((end_date - start_date).days + 1)
-        ]
+        # Validate the arguments
+        validate_args(args)
 
-        for date in date_values:
-            data = await fetcher_instance.fetch(f"{MainConfig.FETCHER.url}/{date}", {})
-            extracted_data = extractor.extract_data(data)
-            await cache.put(f"extracted_data_{date}", extracted_data)
+        # Log the mode and period values
+        logger.info(f"Mode selected: {args.mode}")
+        logger.info(f"Period value: {args.period}")
 
-        # 4. Analyze the data
-        validated_matches = analyzer.TeamMatchValidator.validate(extracted_data)
-        for match in validated_matches:
-            points = analyzer.PointsCalculator.award_points(match)
-            winner = analyzer.WinnerDeterminer.determine_winner(points)
+        # Print confirmation of mode selected
+        print(f"Running in {args.mode} mode with a period of {args.period} days.")
 
-        # 5. Train any models if needed
-        ml_instance.load_training_data(validated_matches)
-        ml_instance.evaluate_models()
+        # Initialize configuration module
+        config = initialize_config(args.config)
 
-        # 6. Evaluate the results using the evaluator instance
-        evaluation_results = await evaluator_instance.execute_backtest()
+        # Initialize dependency injection container
+        container = initialize_dependency_container(config)
 
-        # 7. Write the results or any output
-        formatter = writer.JSONFormatter()
-        file_writer = writer.FileWriter()
-        data_writer = writer.DataWriter(formatter, file_writer)
-        with open(MainConfig.OUTPUT_FILE, "w") as file:
-            await data_writer.write_data(file, evaluation_results)
+        # Construct application components
+        orchestrator = WorkflowOrchestrator(container, args.mode, args.period)
+
+        # Kick off workflow orchestration
+        orchestrator.start()
+
+        # Expose any external API endpoints
+        api = APIEndpoints(container)
+        api.start()
+
+        # Start application lifecycle
+        asyncio.run(orchestrator.run())
 
     except Exception as e:
-        # 8. Log any important information or errors
-        log.error(f"An error occurred: {e}")
+        handle_uncaught_exceptions()
 
 if __name__ == "__main__":
-    # Implement multiprocessing for faster execution
-    process = multiprocessing.Process(target=asyncio.run(main()))
-    process.start()
-    process.join()
+    main()

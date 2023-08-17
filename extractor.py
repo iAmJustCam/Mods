@@ -1,10 +1,10 @@
 # coding: utf-8
+# extractor.py
 from bs4 import BeautifulSoup
 import logging
 from typing import Any, Callable, Dict, List, NamedTuple
 import asyncio
-from fetcher import AsyncFetcher, FetcherConfig
-import aiocache
+from cacher import Cache, CacheBackend
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -13,21 +13,15 @@ logging.basicConfig(
 # Constants
 CACHE_EXPIRATION = 3600  # 1 hour in seconds
 
-# Exceptions
 class ParsingError(Exception):
-    """Exception raised for parsing related errors."""
-
+    pass
 
 class FetchingError(Exception):
-    """Exception raised when fetching data fails."""
+    pass
 
-
-# NamedTuple for Matchup
 Matchup = NamedTuple("Matchup", [("home", str), ("away", str), ("date", str)])
 
-
 class DataTransformer:
-    """Utility class to transform fetched data."""
 
     @staticmethod
     def transform(html_content: str, categories: List[str], parsing_func: Callable) -> Dict[str, Any]:
@@ -35,20 +29,14 @@ class DataTransformer:
             raise ParsingError("Invalid input for transformation")
         return parsing_func(html_content, categories)
 
-
 class TeamRankingExtractor:
-    def __init__(self, fetcher: AsyncFetcher, cache: aiocache.SimpleMemoryCache):
+
+    def __init__(self, fetcher: "AsyncFetcher", cache: Cache):
         self.fetcher = fetcher
         self.cache = cache
         self.transformer = DataTransformer()
 
-    async def fetch_and_transform(
-        self,
-        url: str,
-        params: Dict[str, Any],
-        categories: List[str],
-        parsing_func: Callable,
-    ) -> Dict[str, Any]:
+    async def fetch_and_transform(self, url: str, params: Dict[str, Any], categories: List[str], parsing_func: Callable) -> Dict[str, Any]:
         html_content = await self._fetch_content(url, params)
         if not html_content:
             raise FetchingError(f"Failed to fetch content from {url}")
@@ -59,7 +47,7 @@ class TeamRankingExtractor:
             return cached_data
 
         transformed_data = self.transformer.transform(html_content, categories, parsing_func)
-        await self.cache.set(cache_key, transformed_data, ttl=CACHE_EXPIRATION)
+        await self.cache.put(cache_key, transformed_data)
         return transformed_data
 
     async def _fetch_content(self, url: str, params: Dict[str, Any]) -> str:
@@ -70,25 +58,22 @@ class TeamRankingExtractor:
             raise FetchingError from e
 
     async def clear_cache(self) -> None:
-        await self.cache.clear()
+        # No clear method in the custom cache
+        pass
 
     async def cache_stats(self) -> Dict[str, int]:
         return await self.cache.stats()
 
-
 def sample_parsing_func(html_content: str, categories: List[str]) -> Dict[str, Any]:
     soup = BeautifulSoup(html_content, "html.parser")
-
-    def _extract_category_rank(soup_obj: BeautifulSoup, category: str) -> Any:
-        # As a placeholder, you would implement the logic here to parse the rank for a given category
-        return soup_obj.find("div", class_=category).text
-
-    return {cat: _extract_category_rank(soup, cat) for cat in categories}
-
+    return {cat: soup.find("div", class_=cat).text for cat in categories}
 
 if __name__ == "__main__":
-    fetcher = AsyncFetcher(FetcherConfig(...))
-    cache = aiocache.SimpleMemoryCache(max_size=100, ttl=CACHE_EXPIRATION)
+    from fetcher import AsyncFetcher, FetcherConfig
+
+    fetcher = AsyncFetcher()
+    backend = CacheBackend(capacity=100)
+    cache = Cache(backend=backend, ttl=CACHE_EXPIRATION)
     extractor = TeamRankingExtractor(fetcher, cache)
     asyncio.run(
         extractor.fetch_and_transform(

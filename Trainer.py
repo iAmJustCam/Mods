@@ -14,6 +14,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class DataPreprocessor:
     def __init__(self):
         self.scaler = StandardScaler()
@@ -21,13 +22,24 @@ class DataPreprocessor:
     def preprocess_data(self, data):
         return self.scaler.fit_transform(data)
 
+
 class ModelTrainer:
     def __init__(self, model):
         self.model = model
         self.best_params = None
 
-    def train(self, data, labels, validation_split=0.1, epochs=100, early_stopping_rounds=5, handle_class_imbalance=False):
-        X_train, X_test, y_train, y_test = train_test_split(data, labels, test_size=validation_split)
+    def train(
+        self,
+        data,
+        labels,
+        validation_split=0.1,
+        epochs=100,
+        early_stopping_rounds=5,
+        handle_class_imbalance=False,
+    ):
+        X_train, X_test, y_train, y_test = train_test_split(
+            data, labels, test_size=validation_split
+        )
         self.model.fit(X_train, y_train)
         return self.model
 
@@ -39,6 +51,7 @@ class ModelTrainer:
             self.best_params = grid_search.best_params_
             self.model = grid_search.best_estimator_
 
+
 class ModelEvaluator:
     def __init__(self, model):
         self.model = model
@@ -47,17 +60,22 @@ class ModelEvaluator:
     def evaluate(self, data, labels):
         y_pred = self.model.predict(data)
         accuracy = accuracy_score(labels, y_pred)
-        precision, recall, f_score, _ = precision_recall_fscore_support(labels, y_pred, average='weighted')
-        self.metrics_history.append({
-            'accuracy': accuracy,
-            'precision': precision,
-            'recall': recall,
-            'f_score': f_score
-        })
+        precision, recall, f_score, _ = precision_recall_fscore_support(
+            labels, y_pred, average="weighted"
+        )
+        self.metrics_history.append(
+            {
+                "accuracy": accuracy,
+                "precision": precision,
+                "recall": recall,
+                "f_score": f_score,
+            }
+        )
         return accuracy, precision, recall, f_score
 
     def log_metrics_history(self):
         logger.info(f"Metrics history: {self.metrics_history}")
+
 
 class MachineLearning:
     def __init__(self):
@@ -67,15 +85,19 @@ class MachineLearning:
         self.model_evaluator = ModelEvaluator(self.model)
 
     def load_training_data(self, projected_winners, actual_winners):
-        self.projected_winners = self.data_preprocessor.preprocess_data(projected_winners)
+        self.projected_winners = self.data_preprocessor.preprocess_data(
+            projected_winners
+        )
         self.actual_winners = actual_winners
 
     def _extract_features(self, winner):
-        return winner['stats']  # Assuming 'stats' is a key in the winner data
+        return winner["stats"]  # Assuming 'stats' is a key in the winner data
 
     def evaluate_models(self, data, labels):
         self.model_trainer.train(data, labels)
-        accuracy, precision, recall, f_score = self.model_evaluator.evaluate(data, labels)
+        accuracy, precision, recall, f_score = self.model_evaluator.evaluate(
+            data, labels
+        )
         return accuracy, precision, recall, f_score
 
     def incremental_fit(self, new_data, new_labels):
@@ -87,10 +109,22 @@ class MachineLearning:
         shap.plots.bar(shap_values)
 
     def save_model(self, path):
-        joblib.dump((self.model, self.data_preprocessor.scaler, self.model_evaluator.metrics_history), path)
+        joblib.dump(
+            (
+                self.model,
+                self.data_preprocessor.scaler,
+                self.model_evaluator.metrics_history,
+            ),
+            path,
+        )
 
     def load_model(self, path):
-        self.model, self.data_preprocessor.scaler, self.model_evaluator.metrics_history = joblib.load(path)
+        (
+            self.model,
+            self.data_preprocessor.scaler,
+            self.model_evaluator.metrics_history,
+        ) = joblib.load(path)
+
 
 if __name__ == "__main__":
     ml_instance = MachineLearning()

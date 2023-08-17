@@ -1,5 +1,4 @@
-#logger.py module
-#coding: utf-8
+# coding: utf-8
 import logging
 import os
 from logging.handlers import RotatingFileHandler
@@ -8,7 +7,7 @@ def setup_logging(
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     log_file_name: str = "log.txt",
     file_log_level: int = None,
-    console_log_level: int = None
+    console_log_level: int = None,
 ) -> None:
     """
     Set up logging with given configurations.
@@ -18,13 +17,19 @@ def setup_logging(
     :param file_log_level: Logging level for the log file.
     :param console_log_level: Logging level for console output.
     """
-    file_log_level = file_log_level or int(os.environ.get('FILE_LOG_LEVEL', logging.INFO))
-    console_log_level = console_log_level or int(os.environ.get('CONSOLE_LOG_LEVEL', logging.INFO))
+    file_log_level = file_log_level or int(
+        os.environ.get("FILE_LOG_LEVEL", logging.INFO)
+    )
+    console_log_level = console_log_level or int(
+        os.environ.get("CONSOLE_LOG_LEVEL", logging.INFO)
+    )
 
     log_filename = os.path.join(os.path.dirname(__file__), log_file_name)
 
     # Setup Rotating Log Files
-    file_handler = RotatingFileHandler(log_filename, "a", "utf-8", maxBytes=10*1024*1024, backupCount=3)
+    file_handler = RotatingFileHandler(
+        filename=log_filename, mode="a", maxBytes=10 * 1024 * 1024, backupCount=3
+    )
     file_handler.setLevel(file_log_level)
     file_handler.setFormatter(logging.Formatter(log_format))
 
@@ -32,15 +37,17 @@ def setup_logging(
     console_handler.setLevel(console_log_level)
     console_handler.setFormatter(logging.Formatter(log_format))
 
-    logging.basicConfig(level=min(file_log_level, console_log_level), handlers=[file_handler, console_handler])
+    logging.basicConfig(
+        level=min(file_log_level, console_log_level),
+        handlers=[file_handler, console_handler],
+    )
 
     # Handle potential file operation exceptions
     try:
-        with open(log_filename, 'a'):
+        with open(log_filename, "a"):
             pass
     except Exception as e:
         logging.error(f"Failed to create or access the log file: {e}")
-
 
 def get_logger(name: str) -> logging.Logger:
     """
@@ -50,7 +57,6 @@ def get_logger(name: str) -> logging.Logger:
     :return: An instance of a logger.
     """
     return logging.getLogger(name)
-
 
 if __name__ == "__main__":
     setup_logging()

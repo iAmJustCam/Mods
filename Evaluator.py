@@ -1,4 +1,3 @@
-# evaluator.py
 # coding: utf-8
 import logging
 import asyncio
@@ -6,7 +5,8 @@ from typing import Dict, List, Optional, Union, Type, Any
 from datetime import datetime, timedelta
 import aiohttp
 from abc import ABC, abstractmethod
-from multiprocessing import Pool
+from numba import jit
+import numpy as np
 
 # Constants
 DATE_FORMAT = "%Y-%m-%d"
@@ -24,14 +24,6 @@ Evaluator Module:
 
 This module provides functionality for backtesting prediction models against historical data.
 It includes utilities for data fetching, metrics calculation, and backtesting.
-
-Architecture Overview:
-- DateConverter: Utility for date string and datetime object conversions.
-- MatchupDataCleaner: Cleans raw matchup data.
-- ScheduleScraperStrategy: Abstract base class for schedule scraper strategies.
-- DataFetcher: Fetches data asynchronously with caching.
-- MetricsCalculator: Calculates metrics based on predictions.
-- Backtester: Executes backtests, calculates metrics, and logs results.
 """
 
 class DateFormatError(Exception):
@@ -119,6 +111,7 @@ class MetricsCalculator:
         """Initializes the MetricsCalculator."""
         pass
 
+    @jit(nopython=True)
     def calculate_metrics(self, correct_predictions: int, total_predictions: int) -> Dict[str, float]:
         """Calculates accuracy, precision, recall, and F1 score."""
         accuracy = correct_predictions / total_predictions if total_predictions else 0
@@ -137,13 +130,12 @@ class MetricsCalculator:
         return "<MetricsCalculator>"
 
 class Backtester:
-    def __init__(self, backtest_period: int, scraper: "ScheduleScraperStrategy", predictor: Optional[Type] = None):
-        """Initializes the Backtester with a period, scraper strategy, and optional predictor."""
+    def __init__(self, backtest_period: int, scraper: "ScheduleScraperStrategy"):
+        """Initializes the Backtester with a period and scraper strategy."""
         if backtest_period <= 0:
             raise ValueError("Backtest period must be positive.")
         self.backtest_period = backtest_period
         self.data_fetcher = DataFetcher(scraper)
-        self.predictor = predictor
 
     async def _execute_single_backtest(self, date: str) -> List[Dict[str, Any]]:
         """Executes a single backtest for a specific date."""
@@ -160,7 +152,6 @@ class Backtester:
         results = await asyncio.gather(*tasks)
         return results
 
-
     async def execute_backtest(self) -> Dict[str, Union[float, Dict[str, float]]]:
         """Executes the backtest and returns metrics."""
         start_time = datetime.now()
@@ -172,7 +163,7 @@ class Backtester:
             for i in range((end_date - start_date).days + 1)
         ]
 
-        all_results = self._parallel_backtest(date_values)
+        all_results = await self._parallel_backtest(date_values)
 
         # Flatten the results
         schedule_data = [MatchupDataCleaner.clean(data) for sublist in all_results for data in sublist]

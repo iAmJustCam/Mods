@@ -1,26 +1,31 @@
-# constants.py
 # coding: utf-8
-import os
-from typing import NamedTuple, Union
-from enum import Enum
+from enum import Enum, auto
 
 # Constants for Prompter.py
-MOTIVATIONAL_QUOTES = [
-    "Believe you can and you're halfway there.",
-    "The future belongs to those who believe in the beauty of their dreams.",
-    "It always seems impossible until it's done."
-]
+class MotivationalQuotes(Enum):
+    QUOTE_1 = "Believe you can and you're halfway there."
+    QUOTE_2 = "The future belongs to those who believe in the beauty of their dreams."
+    QUOTE_3 = "It always seems impossible until it's done."
+
 PROMPTER_NAME = "Promptly"
-THEMES = {
-    "light": (Fore.BLACK, Back.WHITE),
-    "dark": (Fore.WHITE, Back.BLACK)
-}
-CURRENT_THEME = "light"
+
+class Themes(Enum):
+    LIGHT = ("black", "white")
+    DARK = ("white", "black")
+
+CURRENT_THEME = Themes.LIGHT
 DEFAULT_BACKTEST_PERIOD = 7
 DEFAULT_CONFIG_FILE = "prompter_config.json"
 DEFAULT_EXPORT_PATH = "results"
-POSITIVE_REINFORCEMENTS = ["Well done!", "Keep it up!", "Fantastic job!"]
-EXPORT_FORMATS = ["json", "csv"]
+
+class PositiveReinforcements(Enum):
+    MESSAGE_1 = "Well done!"
+    MESSAGE_2 = "Keep it up!"
+    MESSAGE_3 = "Fantastic job!"
+
+class ExportFormats(Enum):
+    JSON = "json"
+    CSV = "csv"
 
 class ColumnNames(Enum):
     MATCHUP = "Matchup"
@@ -32,27 +37,7 @@ class ColumnNames(Enum):
     HOME_POINT_TOTAL = "Home Point Total"
     PROJECTED_WINNER = "Projected Winner"
 
-class Environment:
-    """Class to manage environment variables."""
-
-    @staticmethod
-    def fetch(
-        variable_name: str, default: Union[str, int], expected_type: type
-    ) -> Union[str, int]:
-        """Fetch an environment variable, ensuring type safety and providing default values."""
-        raw_value = os.getenv(variable_name, default=default)
-
-        try:
-            return expected_type(raw_value)
-        except ValueError:
-            print(
-                f"Warning: Invalid value for environment variable '{variable_name}'. Using default: {default}."
-            )
-            return default
-
-class Config:
-    """Class to organize configuration constants."""
-
+class Config(Enum):
     COLUMNS = [column.value for column in ColumnNames]
-    DATE_FORMAT = Environment.fetch("DATE_FORMAT", "%Y-%m-%d", str)
-    CACHE_SIZE = Environment.fetch("CACHE_SIZE", 100, int)
+    DATE_FORMAT = "%Y-%m-%d"
+    CACHE_SIZE = 100

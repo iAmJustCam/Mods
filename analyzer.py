@@ -6,11 +6,13 @@ from rich.progress import track
 import random
 from playsound import playsound
 from dataclasses import dataclass
-from typing import List, Union, Dict
+from typing import List, Union, Dict, Tuple
 from datetime import datetime, timezone
 import logging
 import json
 import pandas as pd
+from functools import lru_cache
+from abc import ABC, abstractmethod
 
 # Constants (default values)
 MAX_SCORE = 20
@@ -139,6 +141,7 @@ class WinnerDeterminer:
             return "It's a Tie!"
         return team
 
+@lru_cache(maxsize=128)
 def save_results_to_file(results: List[Dict[str, Union[str, int]]], filename: str, file_format: str):
     if file_format == "json":
         with open(filename, 'w') as f:

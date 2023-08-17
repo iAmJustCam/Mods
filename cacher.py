@@ -1,5 +1,5 @@
-#cacher.py
 # coding: utf-8
+import zlib
 from collections import OrderedDict, Counter
 import hashlib
 import time
@@ -11,48 +11,48 @@ K = TypeVar("K")  # Key type
 V = TypeVar("V")  # Value type
 
 
-class CacheBackend(Generic[K, V]):
-    """Backend that manages the cache data storage using an OrderedDict."""
+class CacheStorage(Generic[K, V]):
+    """Storage backend that manages the cache data using an OrderedDict."""
 
     def __init__(self, capacity: int, eviction_policy: str = "lru"):
-        self.cache = OrderedDict()
+        self.data = OrderedDict()
         self.usage = Counter() if eviction_policy == "lfu" else None
         self.capacity = capacity
         self.eviction_policy = eviction_policy
 
     def get(self, key: K) -> Optional[V]:
-        if self.eviction_policy == "lfu" and key in self.cache:
+        if self.eviction_policy == "lfu" and key in self.data:
             self.usage[key] += 1
-        return self.cache.get(key)
+        return self.data.get(key)
 
     def put(self, key: K, value: V) -> None:
-        self.cache[key] = value
+        self.data[key] = value
         if self.eviction_policy == "lfu":
             self.usage[key] += 1
-        if len(self.cache) > self.capacity:
+        if len(self.data) > self.capacity:
             if self.eviction_policy == "lfu":
                 least_used = self.usage.most_common()[:-2:-1][0][0]
-                del self.cache[least_used]
+                del self.data[least_used]
                 del self.usage[least_used]
             else:  # Default is LRU
-                self.cache.popitem(last=False)
+                self.data.popitem(last=False)
 
-    def serialize(self) -> str:
-        """Serialize the cache (without timestamps) to a JSON string."""
-        serialized_data = {key: value[1] for key, value in self.cache.items()}
-        return json.dumps(serialized_data)
 
-    @classmethod
-    def deserialize(cls, data: str, capacity: int) -> "CacheBackend":
-        """Deserialize a JSON string to create a CacheBackend instance and add current timestamps."""
-        cache_data = json.loads(data)
-        current_timestamp = time.time()
-        cache_with_timestamps = {
-            key: (current_timestamp, value) for key, value in cache_data.items()
-        }
-        instance = cls(capacity=capacity)
-        instance.cache = cache_with_timestamps
-        return instance
+class CacheBackend(Generic[K, V]):
+    """Backend that manages cache operations and compression."""
+
+    def __init__(self, storage: CacheStorage[K, V]):
+        self.storage = storage
+
+    def get(self, key: K) -> Optional[V]:
+        compressed_data = self.storage.get(key)
+        if compressed_data:
+            return zlib.decompress(compressed_data)
+        return None
+
+    def put(self, key: K, value: V) -> None:
+        compressed_data = zlib.compress(value)
+        self.storage.put(key, compressed_data)
 
 
 class Cache(Generic[K, V]):
@@ -79,11 +79,11 @@ class Cache(Generic[K, V]):
                 current_time = time.time()
                 expired_keys = [
                     key
-                    for key, (timestamp, _) in self.backend.cache.items()
+                    for key, (timestamp, _) in self.backend.storage.data.items()
                     if self.ttl and current_time - timestamp > self.ttl
                 ]
                 for key in expired_keys:
-                    del self.backend.cache[key]
+                    del self.backend.storage.data[key]
 
     async def get(self, key: K) -> Optional[V]:
         async with self.lock:
@@ -91,7 +91,7 @@ class Cache(Generic[K, V]):
             if entry:
                 timestamp, value = entry
                 if self.ttl and time.time() - timestamp > self.ttl:
-                    del self.backend.cache[key]
+                    del self.backend.storage.data[key]
                     return None
                 self.hits += 1
                 return value
@@ -106,12 +106,12 @@ class Cache(Generic[K, V]):
     async def stats(self) -> Dict[str, Any]:
         async with self.lock:
             oldest_entry = (
-                next(iter(self.backend.cache.values())) if self.backend.cache else None
+                next(iter(self.backend.storage.data.values())) if self.backend.storage.data else None
             )
             return {
                 "hits": self.hits,
                 "misses": self.misses,
-                "size": len(self.backend.cache),
+                "size": len(self.backend.storage.data),
                 "oldest_entry_timestamp": oldest_entry[0] if oldest_entry else None,
             }
 
@@ -133,7 +133,8 @@ class Cache(Generic[K, V]):
 
 if __name__ == "__main__":
     # Sample usage to demonstrate the new structure.
-    backend = CacheBackend(capacity=3)
+    storage = CacheStorage(capacity=3)
+    backend = CacheBackend(storage=storage)
     cache = Cache(backend=backend, ttl=300)
     asyncio.run(cache.start())
     # Further usage logic here

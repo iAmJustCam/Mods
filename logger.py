@@ -6,8 +6,8 @@ from logging.handlers import RotatingFileHandler
 def setup_logging(
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     log_file_name: str = "log.txt",
-    file_log_level: int = None,
-    console_log_level: int = None,
+    file_log_level: int = logging.INFO,
+    console_log_level: int = logging.INFO,
 ) -> None:
     """
     Set up logging with given configurations.
@@ -17,13 +17,6 @@ def setup_logging(
     :param file_log_level: Logging level for the log file.
     :param console_log_level: Logging level for console output.
     """
-    file_log_level = file_log_level or int(
-        os.environ.get("FILE_LOG_LEVEL", logging.INFO)
-    )
-    console_log_level = console_log_level or int(
-        os.environ.get("CONSOLE_LOG_LEVEL", logging.INFO)
-    )
-
     log_filename = os.path.join(os.path.dirname(__file__), log_file_name)
 
     # Setup Rotating Log Files

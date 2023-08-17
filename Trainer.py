@@ -1,4 +1,3 @@
-# trainer.py module
 # coding: utf-8
 from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
 from sklearn.linear_model import LogisticRegression
@@ -7,6 +6,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from sklearn.utils.class_weight import compute_class_weight
+from skopt import BayesSearchCV
 import joblib
 import shap
 import numpy as np
@@ -46,10 +46,10 @@ class ModelTrainer:
     def tune_hyperparams(self, data, labels):
         if isinstance(self.model, SVC):
             param_grid = {"C": [0.1, 1, 10], "kernel": ["linear", "rbf"]}
-            grid_search = GridSearchCV(self.model, param_grid, cv=5)
-            grid_search.fit(data, labels)
-            self.best_params = grid_search.best_params_
-            self.model = grid_search.best_estimator_
+            bayes_search = BayesSearchCV(self.model, param_grid, n_iter=32, cv=5)
+            bayes_search.fit(data, labels)
+            self.best_params = bayes_search.best_params_
+            self.model = bayes_search.best_estimator_
 
 
 class ModelEvaluator:
@@ -89,9 +89,6 @@ class MachineLearning:
             projected_winners
         )
         self.actual_winners = actual_winners
-
-    def _extract_features(self, winner):
-        return winner["stats"]  # Assuming 'stats' is a key in the winner data
 
     def evaluate_models(self, data, labels):
         self.model_trainer.train(data, labels)

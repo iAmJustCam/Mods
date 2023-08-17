@@ -1,10 +1,6 @@
-# Prompter.py Module
 import json
-from json import decoder
 from pathlib import Path
-from fetcher import ScheduleScraperStrategy
-from Evaluator import Backtester
-from colorama import Fore, Back, init
+from colorama import Fore, init
 import readline
 import time
 from logger import get_logger
@@ -30,85 +26,24 @@ class ModeChoice(Enum):
     BACKTEST = "1"
     PROJECTION = "2"
 
-
-class UserIO:
+class PrompterUI:
     @staticmethod
     def print_help_text() -> None:
         """Prints the help text for the Prompter."""
-        help_text = """
-        Welcome to the Prompter!
+        help_text = f"""
+        {Fore.CYAN}Welcome to the Prompter!{Fore.RESET}
         Follow the on-screen instructions to navigate through the options.
         """
         print(help_text)
 
-class BacktestResults:
-    """Encapsulates the results of a backtest."""
-    def __init__(self, win_rate: float, other_metrics: dict):
-        self.win_rate = win_rate
-        self.other_metrics = other_metrics
-
-    def display(self):
-        """Displays the backtest results."""
-        print(f"Total win rate for the strategy over the backtest period: {self.win_rate * 100:.2f}%")
-        for metric, value in self.other_metrics.items():
-            print(f"{metric}: {value}")
-
-class StrategyInterface:
-    @property
-    def name(self) -> str:
-        pass
-
-    def execute(self) -> BacktestResults:
-        pass
-
-    def set_parameters(self, params: dict) -> None:
-        pass
-
-    def get_results(self) -> BacktestResults:
-        pass
-
-class BacktestStrategy(StrategyInterface):
-    def __init__(self, scraper: ScheduleScraperStrategy):
-        self.backtester = Backtester(DEFAULT_BACKTEST_PERIOD, scraper)
-
-    @property
-    def name(self) -> str:
-        return "Backtest Strategy"
-
-    def execute(self) -> BacktestResults:
-        raw_results = self.backtester.execute_backtest()
-        return BacktestResults(raw_results.get("win_rate", 0), raw_results)
-
-    def set_parameters(self, params: dict) -> None:
-        self.backtester.set_parameters(params)
-
-    def get_results(self) -> BacktestResults:
-        raw_results = self.backtester.get_results()
-        return BacktestResults(raw_results.get("win_rate", 0), raw_results)
-
-class ProjectionStrategy(StrategyInterface):
-    @property
-    def name(self) -> str:
-        return "Projection Strategy"
-
-    def execute(self) -> BacktestResults:
-        # Implementation for ProjectionStrategy
-        pass
-
-    def set_parameters(self, params: dict) -> None:
-        pass
-
-    def get_results(self) -> BacktestResults:
-        pass
-
-class PrompterUI:
     @staticmethod
     def prompt_yes_no(message: str) -> bool:
         while True:
             user_input = input(f"\033[93m{message} (Y/N): \033[0m").lower()
             if user_input in ['y', 'n']:
                 return user_input == "y"
-            print("Invalid input. Please enter Y or N.", file=sys.stderr)
+            print(f"{Fore.RED}Invalid input. Please enter Y or N.{Fore.RESET}")
+
 
     @staticmethod
     def prompt_logging_level() -> str:
@@ -167,7 +102,7 @@ class PrompterUI:
         return input(f"{Fore.YELLOW}> {Fore.RESET}")
 
 class Prompter:
-    def __init__(self, strategy: StrategyInterface):
+    def __init__(self, strategy):
         self.strategy = strategy
         self.logger = get_logger(__name__)
         self.user_name = self.get_user_name()
@@ -212,13 +147,6 @@ def run(self) -> None:
                 break
             else:
                 print(f"{Fore.RED}Invalid choice. Please try again.{Fore.RESET}")
-    except FileNotFoundError:
-        print(f"{Fore.RED}File not found. Please check the file path and try again.{Fore.RESET}")
-    except json.decoder.JSONDecodeError:
-        print(f"{Fore.RED}Error decoding JSON. Please check the file format and try again.{Fore.RESET}")
-    except ValueError as e:
-        self.logger.error(f"An error occurred: {e}")
-        print(f"{Fore.RED}{e}{Fore.RESET}")
     except Exception as e:
         self.logger.error(f"An unexpected error occurred: {e}")
         print(f"{Fore.RED}An unexpected error occurred. Please try again later.{Fore.RESET}")
@@ -228,7 +156,6 @@ def main():
     parser = argparse.ArgumentParser(description="Run the Prompter.")
     parser.add_argument("--config", type=Path, help="Path to the configuration file.")
     args = parser.parse_args()
-    # Removed the config_file check since it's now handled in config.py
     prompter = Prompter(BacktestStrategy(ScheduleScraperStrategy()))
     print(f"Hello! I'm {PROMPTER_NAME}. Let's get started!")
     prompter.run()

@@ -1,5 +1,7 @@
+import argparse
 import asyncio
 from datetime import datetime, timedelta
+import multiprocessing
 
 import config
 from config import MainConfig, ConfigurationManager
@@ -13,37 +15,42 @@ import Evaluator
 import writer
 import logger
 
-# Setup
+# Setup logging
 logger.setup_logging()
 log = logger.get_logger(__name__)
 
+# Argument parsing for enhanced user interaction
+parser = argparse.ArgumentParser(description="Run the main application with optional configurations.")
+parser.add_argument("--backtest-period", type=int, help="Number of days for backtesting.")
+args = parser.parse_args()
+
+# Load configuration
+config_manager = ConfigurationManager(MainConfig.CONFIG_FILE_PATH)
+
+# Setup cache
+backend = cacher.AsyncCacheBackend(capacity=MainConfig.CACHE_CAPACITY, ttl=MainConfig.CACHE_TTL)
+cache = cacher.Cache(backend=backend)
+
+# Setup fetcher
+scraper_instance = fetcher.MlbScheduleScraper(MainConfig.SCRAPER_URL)
+fetcher_instance = fetcher.Fetcher(MainConfig.FETCHER, MainConfig.FETCHER.url)
+
+# Setup prompter
+backtest_manager = Prompter.BacktestManager(scraper_instance)
+prompter = Prompter.Prompter(backtest_manager)
+
+# Setup machine learning instance
+ml_instance = Trainer.MachineLearning(MainConfig.TRAINING_DATA_PATH)
+
+# Setup extractor
+async_fetcher = fetcher.AsyncFetcher(MainConfig.FETCHER)
+cache_instance = cacher.AsyncCacheBackend(capacity=MainConfig.CACHE_CAPACITY)
+team_ranking_extractor = extractor.TeamRankingExtractor(async_fetcher, cache_instance)
+
+# Setup evaluator
+evaluator_instance = Evaluator.Backtester(args.backtest_period if args.backtest_period else prompter.backtest_period, scraper_instance)
+
 async def main():
-    # Load configuration
-    config_manager = ConfigurationManager(MainConfig.CONFIG_FILE_PATH)
-
-    # Setup cache
-    backend = cacher.AsyncCacheBackend(capacity=MainConfig.CACHE_CAPACITY, ttl=MainConfig.CACHE_TTL)
-    cache = cacher.Cache(backend=backend)
-
-    # Setup fetcher
-    scraper_instance = fetcher.MlbScheduleScraper(MainConfig.SCRAPER_URL)
-    fetcher_instance = fetcher.Fetcher(MainConfig.FETCHER, MainConfig.FETCHER.url)
-
-    # Setup prompter
-    backtest_manager = Prompter.BacktestManager(scraper_instance)
-    prompter = Prompter.Prompter(backtest_manager)
-
-    # Setup machine learning instance
-    ml_instance = Trainer.MachineLearning(MainConfig.TRAINING_DATA_PATH)
-
-    # Setup extractor
-    async_fetcher = fetcher.AsyncFetcher(MainConfig.FETCHER)
-    cache_instance = cacher.AsyncCacheBackend(capacity=MainConfig.CACHE_CAPACITY)
-    team_ranking_extractor = extractor.TeamRankingExtractor(async_fetcher, cache_instance)
-
-    # Setup evaluator
-    evaluator_instance = Evaluator.Backtester(prompter.backtest_period, scraper_instance)
-
     try:
         # 2. Prompt the user for input and configurations
         await prompter.run()
@@ -52,7 +59,7 @@ async def main():
         end_date = datetime.today() - timedelta(days=1)
         start_date = end_date - timedelta(days=prompter.backtest_period - 1)
         date_values = [
-            (start_date + timedelta(days=i)).strftime(Config().DATE_FORMAT)
+            (start_date + timedelta(days=i)).strftime(config.Config().DATE_FORMAT)
             for i in range((end_date - start_date).days + 1)
         ]
 
@@ -85,6 +92,8 @@ async def main():
         # 8. Log any important information or errors
         log.error(f"An error occurred: {e}")
 
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Implement multiprocessing for faster execution
+    process = multiprocessing.Process(target=asyncio.run(main()))
+    process.start()
+    process.join()

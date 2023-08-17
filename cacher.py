@@ -1,4 +1,4 @@
-# cacher.py module
+#cacher.py
 # coding: utf-8
 from collections import OrderedDict, Counter
 import hashlib
@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Generic, Optional, TypeVar
 
 K = TypeVar("K")  # Key type
 V = TypeVar("V")  # Value type
+
 
 class CacheBackend(Generic[K, V]):
     """Backend that manages the cache data storage using an OrderedDict."""
@@ -46,10 +47,13 @@ class CacheBackend(Generic[K, V]):
         """Deserialize a JSON string to create a CacheBackend instance and add current timestamps."""
         cache_data = json.loads(data)
         current_timestamp = time.time()
-        cache_with_timestamps = {key: (current_timestamp, value) for key, value in cache_data.items()}
+        cache_with_timestamps = {
+            key: (current_timestamp, value) for key, value in cache_data.items()
+        }
         instance = cls(capacity=capacity)
         instance.cache = cache_with_timestamps
         return instance
+
 
 class Cache(Generic[K, V]):
     """Interface for caching mechanism with TTL and stats."""
@@ -60,7 +64,11 @@ class Cache(Generic[K, V]):
         self.hits = 0
         self.misses = 0
         self.lock = asyncio.Lock()
-        self.cleanup_interval = ttl // 2 or 300  # clean up half of the TTL or every 5 mins
+        self.cleanup_interval = (
+            ttl // 2 or 300
+        )  # clean up half of the TTL or every 5 mins
+
+    async def start(self):
         self.cleanup_task = asyncio.create_task(self.cleanup_expired_entries())
 
     async def cleanup_expired_entries(self):
@@ -70,7 +78,8 @@ class Cache(Generic[K, V]):
             async with self.lock:
                 current_time = time.time()
                 expired_keys = [
-                    key for key, (timestamp, _) in self.backend.cache.items()
+                    key
+                    for key, (timestamp, _) in self.backend.cache.items()
                     if self.ttl and current_time - timestamp > self.ttl
                 ]
                 for key in expired_keys:
@@ -110,7 +119,9 @@ class Cache(Generic[K, V]):
         """Async memoization function to cache the results of async function calls."""
 
         async def async_wrapper(*args, **kwargs):
-            key = hashlib.sha256(str(args).encode() + str(kwargs).encode()).hexdigest()  # Using SHA256 instead of MD5
+            key = hashlib.sha256(
+                str(args).encode() + str(kwargs).encode()
+            ).hexdigest()  # Using SHA256 instead of MD5
             result = await self.get(key)
             if not result:
                 result = await func(*args, **kwargs)
@@ -119,8 +130,10 @@ class Cache(Generic[K, V]):
 
         return async_wrapper
 
+
 if __name__ == "__main__":
     # Sample usage to demonstrate the new structure.
     backend = CacheBackend(capacity=3)
     cache = Cache(backend=backend, ttl=300)
+    asyncio.run(cache.start())
     # Further usage logic here
